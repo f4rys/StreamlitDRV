@@ -1,0 +1,13 @@
+[project]
+name = "streamlitdrv"
+version = "0.1.0"
+description = "Streamlit app for interactive dimensionality reduction and data visualization (t-SNE, UMAP, PaCMAP, TRIMAP)."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.2.5",
+    "pandas>=2.2.3",
+    "plotly>=6.0.1",
+    "scikit-learn>=1.6.1",
+    "streamlit>=1.45.0",
+]
