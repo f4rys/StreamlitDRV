@@ -77,7 +77,7 @@ st.dataframe(variance_df.style.format({
     "Cumulative Explained Variance": "{:.2%}"
 }))
 
-if n_components > 2:
+if n_components >= 2:
     fig_variance = px.bar(
         variance_df,
         x='Principal Component',
