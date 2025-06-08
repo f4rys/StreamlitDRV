@@ -19,27 +19,152 @@ st.set_page_config(
 st.title("StreamlitDRV: Dimensionality Reduction Visualization")
 st.markdown(
     """
-This demo loads the scikit-learn diabetes dataset, performs dimensionality reduction
-to reduce it to 2 dimensions, and visualizes the result.
+This app performs dimensionality reduction to reduce data to 2 dimensions and visualizes the result.
+You can use the built-in diabetes dataset or upload your own CSV/Excel file.
 """
 )
 
-# --- 1. Load Data ---
-st.header("1. Load Diabetes Dataset")
-diabetes = load_diabetes()
-X = diabetes.data
-y = diabetes.target
-feature_names = diabetes.feature_names
+# --- 1. Data Source Selection ---
+st.header("1. Select Data Source")
 
-df = pd.DataFrame(X, columns=feature_names)
-df["target"] = y
+data_source = st.radio(
+    "Choose your data source:",
+    ["Sample Dataset (Diabetes)", "Upload Your Own Data"]
+)
+
+if data_source == "Sample Dataset (Diabetes)":
+    st.subheader("Loading Diabetes Dataset")
+    diabetes = load_diabetes()
+    X = diabetes.data
+    y = diabetes.target
+    feature_names = diabetes.feature_names
+    
+    df = pd.DataFrame(X, columns=feature_names)
+    df["target"] = y
+    
+    target_column = "target"
+    dataset_name = "Diabetes Dataset"
+    
+else:
+    st.subheader("Upload Your Dataset")
+    uploaded_file = st.file_uploader(
+        "Choose a CSV or Excel file",
+        type=['csv', 'xlsx', 'xls'],
+        help="Upload a CSV or Excel file with your data. The app will automatically detect numeric columns for analysis."
+    )
+    
+    if uploaded_file is not None:
+        try:
+            # Read the file based on its extension
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
+            
+            st.success(f"Successfully loaded {uploaded_file.name}")
+            
+            # Let user select target column
+            numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+            
+            if len(numeric_columns) < 2:
+                st.error("Your dataset needs at least 2 numeric columns for dimensionality reduction.")
+                st.stop()
+            
+            target_column = st.selectbox(
+                "Select target column (for coloring the visualization):",
+                options=numeric_columns,
+                help="This column will be used to color the points in the visualization"
+            )
+            
+            # Select feature columns (all numeric except target)
+            feature_columns = [col for col in numeric_columns if col != target_column]
+            
+            if len(feature_columns) < 2:
+                st.error("You need at least 2 feature columns (excluding target) for dimensionality reduction.")
+                st.stop()
+                
+            selected_features = st.multiselect(
+                "Select feature columns to use for dimensionality reduction:",
+                options=feature_columns,
+                default=feature_columns[:10] if len(feature_columns) > 10 else feature_columns,  # Limit to first 10 by default
+                help="Select the numeric columns to use as features for dimensionality reduction"
+            )
+            
+            if len(selected_features) < 2:
+                st.error("Please select at least 2 feature columns.")
+                st.stop()
+            
+            # Prepare data
+            X = df[selected_features].values
+            y = df[target_column].values
+            feature_names = selected_features
+            dataset_name = uploaded_file.name
+            
+        except Exception as e:
+            st.error(f"Error reading file: {str(e)}")
+            st.stop()
+    else:
+        st.info("Please upload a CSV or Excel file to continue.")
+        st.stop()
 
 st.subheader("Dataset Preview (First 5 rows)")
-st.dataframe(df.head())
-st.write(f"Dataset shape: {df.shape}")
+# Create a preview dataframe with the current features and target
+if data_source == "Upload Your Own Data":
+    preview_df = pd.DataFrame(X, columns=feature_names)
+    preview_df[target_column] = y
+else:
+    preview_df = df
+
+st.dataframe(preview_df.head())
+st.write(f"Dataset shape: {X.shape}")
+st.write(f"Selected features: {len(feature_names)} columns")
+st.write(f"Target column: {target_column}")
 
 # --- 2. Preprocess Data ---
 st.header("2. Data Preprocessing")
+
+# Check for NaN values
+nan_count = np.isnan(X).sum()
+total_nans = nan_count.sum()
+
+if total_nans > 0:
+    st.warning(f"⚠️ Found {total_nans} NaN values in the dataset")
+    
+    # Show NaN distribution per feature
+    if data_source == "Upload Your Own Data":
+        nan_info = pd.DataFrame({
+            'Feature': feature_names,
+            'NaN Count': nan_count,
+            'NaN Percentage': (nan_count / len(X)) * 100
+        })
+        nan_info = nan_info[nan_info['NaN Count'] > 0]
+        if not nan_info.empty:
+            st.write("NaN distribution per feature:")
+            st.dataframe(nan_info)
+    
+    handle_nans = st.radio(
+        "How would you like to handle NaN values?",
+        ["Drop rows with NaN values", "Stop processing (fix data first)"],
+        help="Dimensionality reduction algorithms cannot handle NaN values"
+    )
+    
+    if handle_nans == "Stop processing (fix data first)":
+        st.error("Please clean your data and remove NaN values before proceeding.")
+        st.stop()
+    else:
+        # Drop rows with NaN values
+        before_shape = X.shape
+        valid_indices = ~np.isnan(X).any(axis=1)
+        X = X[valid_indices]
+        y = y[valid_indices]
+        
+        st.success(f"✅ Dropped {before_shape[0] - X.shape[0]} rows with NaN values")
+        st.write(f"Dataset shape after cleaning: {X.shape} (was {before_shape})")
+        
+        if X.shape[0] < 10:
+            st.error("Too few samples remaining after dropping NaN values. Please clean your data.")
+            st.stop()
+
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 st.write("Data has been scaled (mean 0, variance 1 for each feature).")
@@ -104,19 +229,19 @@ st.header(f"4. Visualize 2D {method} Results")
 reduced_df = pd.DataFrame(
     data=X_reduced, columns=[f"{method} Component 1", f"{method} Component 2"]
 )
-reduced_df["target"] = y
+reduced_df[target_column] = y
 
 # Create scatter plot
 fig = px.scatter(
     reduced_df,
     x=f"{method} Component 1",
     y=f"{method} Component 2",
-    color="target",
-    title=f"2D {method} of Diabetes Dataset",
-    labels={"target": "Diabetes Progression"},
-    hover_data={"target": True},
+    color=target_column,
+    title=f"2D {method} of {dataset_name}",
+    labels={target_column: target_column.replace('_', ' ').title()},
+    hover_data={target_column: True},
 )
-fig.update_layout(coloraxis_colorbar_title_text="Diabetes Progression")
+fig.update_layout(coloraxis_colorbar_title_text=target_column.replace('_', ' ').title())
 st.plotly_chart(fig, use_container_width=True)
 
 # Method descriptions

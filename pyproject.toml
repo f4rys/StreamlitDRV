@@ -1,7 +1,7 @@
 [project]
 name = "streamlitdrv"
 version = "0.1.0"
-description = "Streamlit app for interactive dimensionality reduction and data visualization (t-SNE, UMAP, PaCMAP, TRIMAP)."
+description = "Streamlit app for interactive dimensionality reduction and data visualization with support for custom CSV/Excel datasets."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -14,4 +14,5 @@ dependencies = [
     "trimap>=1.1.4",
     "umap-learn>=0.5.7",
     "pacmap>=0.7.2",
+    "openpyxl>=3.0.0",
 ]
