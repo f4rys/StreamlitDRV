@@ -3,19 +3,20 @@ import pandas as pd
 import numpy as np
 from sklearn.datasets import load_diabetes
 from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA, KernelPCA
 from sklearn.manifold import TSNE
 import plotly.express as px
 import umap
 import trimap
+import pacmap
 
 # Page Configuration
 st.set_page_config(
-    layout="wide", page_title="StreamlitDRV - Dimensionality Reduction Demo"
+    layout="wide", page_title="StreamlitDRV - Dimensionality Reduction Visualization",
 )
 
 # Title
-st.title("StreamlitDRV Demo: Dimensionality Reduction on Diabetes Dataset")
+st.title("StreamlitDRV: Dimensionality Reduction Visualization")
 st.markdown(
     """
 This demo loads the scikit-learn diabetes dataset, performs dimensionality reduction
@@ -47,7 +48,7 @@ st.write("Data has been scaled (mean 0, variance 1 for each feature).")
 st.header("3. Dimensionality Reduction")
 
 method = st.selectbox(
-    "Choose dimensionality reduction method:", ["PCA", "t-SNE", "UMAP", "TRIMAP"]
+    "Choose dimensionality reduction method:", ["PCA", "KPCA", "t-SNE", "UMAP", "TRIMAP", "PaCMAP"]
 )
 
 # Method-specific parameters
@@ -73,6 +74,23 @@ elif method == "TRIMAP":
     n_outliers = st.sidebar.slider("Number of outliers", 1, 20, 5)
     reducer = trimap.TRIMAP(
         n_dims=2, n_inliers=n_inliers, n_outliers=n_outliers, verbose=False
+    )
+
+elif method == "KPCA":
+    kernel = st.sidebar.selectbox("Kernel", ["rbf", "poly", "sigmoid", "cosine"], index=0)
+    gamma = st.sidebar.slider("Gamma (for rbf/poly/sigmoid)", 0.001, 10.0, 1.0)
+    degree = st.sidebar.slider("Degree (for poly)", 2, 5, 3) if kernel == "poly" else 3
+    reducer = KernelPCA(
+        n_components=2, kernel=kernel, gamma=gamma, degree=degree, random_state=42
+    )
+
+elif method == "PaCMAP":
+    n_neighbors = st.sidebar.slider("Number of neighbors", 5, 100, 10)
+    mn_ratio = st.sidebar.slider("MN ratio", 0.1, 1.0, 0.5)
+    fp_ratio = st.sidebar.slider("FP ratio", 1.0, 4.0, 2.0)
+    reducer = pacmap.PaCMAP(
+        n_components=2, n_neighbors=n_neighbors, MN_ratio=mn_ratio, 
+        FP_ratio=fp_ratio, random_state=42
     )
 
 # --- 4. Apply Reduction ---
@@ -104,12 +122,14 @@ st.plotly_chart(fig, use_container_width=True)
 # Method descriptions
 method_info = {
     "PCA": "Linear dimensionality reduction that finds principal components with maximum variance.",
+    "KPCA": "Kernel PCA uses kernel methods to perform non-linear dimensionality reduction.",
     "t-SNE": "Non-linear technique that preserves local neighborhood structure.",
     "UMAP": "Non-linear technique that preserves both local and global structure.",
     "TRIMAP": "Preserves local neighborhoods while respecting global distances.",
+    "PaCMAP": "Pairwise Controlled Manifold Approximation Projection preserves local and global structure.",
 }
 
 st.info(method_info[method])
 
 st.sidebar.markdown("---")
-st.sidebar.info("StreamlitDRV Demo")
+st.sidebar.info("StreamlitDRV")
