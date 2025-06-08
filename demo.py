@@ -169,12 +169,69 @@ scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 st.write("Data has been scaled (mean 0, variance 1 for each feature).")
 
+# --- Sample Size Limitation ---
+st.subheader("Sample Size Control")
+
+current_size = X_scaled.shape[0]
+st.write(f"Current dataset size: {current_size} samples")
+
+if current_size > 1000:
+    st.info("💡 Large datasets may take longer to process. Consider using a sample for faster results.")
+
+use_sample = st.checkbox(
+    "Limit sample size for faster processing",
+    help="Use a random subset of your data for dimensionality reduction. Useful for large datasets or quick exploration."
+)
+
+if use_sample:
+    max_samples = min(current_size, 10000)  # Cap at 10k samples
+    min_samples = min(100, current_size)  # Don't go below dataset size
+    
+    # Ensure we have a valid range for the slider
+    if min_samples >= max_samples:
+        st.warning(f"Dataset is too small ({current_size} samples) for sampling. Using all available data.")
+        sample_size = current_size
+    else:
+        default_sample_size = min(1000, current_size)
+        # Ensure default is within valid range
+        default_sample_size = max(min_samples, min(default_sample_size, max_samples))
+        
+        sample_size = st.slider(
+            "Number of samples to use:",
+            min_value=min_samples,
+            max_value=max_samples,
+            value=default_sample_size,
+            step=max(1, min(100, (max_samples - min_samples) // 10)),  # Dynamic step size
+            help=f"Select how many samples to use from the {current_size} available samples"
+        )
+    
+    if sample_size < current_size:
+        # Set random seed for reproducibility
+        np.random.seed(42)
+        sample_indices = np.random.choice(current_size, size=sample_size, replace=False)
+        
+        X_scaled = X_scaled[sample_indices]
+        y = y[sample_indices]
+        
+        st.success(f"✅ Using random sample of {sample_size} samples (from {current_size} total)")
+        st.write(f"Final dataset shape for DR: {X_scaled.shape}")
+    else:
+        st.write("Using all available samples")
+else:
+    st.write(f"Using all {current_size} samples")
+
 # --- 3. Choose Method ---
 st.header("3. Dimensionality Reduction")
 
 method = st.selectbox(
     "Choose dimensionality reduction method:", ["PCA", "KPCA", "t-SNE", "UMAP", "TRIMAP", "PaCMAP"]
 )
+
+# Show performance warning for slow methods on large datasets
+if X_scaled.shape[0] > 5000 and method in ["t-SNE", "TRIMAP"]:
+    st.warning(f"⚠️ {method} can be slow on large datasets ({X_scaled.shape[0]} samples). Consider using sampling or switching to UMAP/PCA for faster results.")
+elif X_scaled.shape[0] > 10000 and method in ["KPCA", "PaCMAP"]:
+    st.warning(f"⚠️ {method} may take some time on datasets with {X_scaled.shape[0]} samples. Consider using sampling for faster results.")
 
 # Method-specific parameters
 st.sidebar.header("Parameters")
