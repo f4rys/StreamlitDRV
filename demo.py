@@ -5,7 +5,11 @@ from sklearn.datasets import load_diabetes
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA, KernelPCA
 from sklearn.manifold import TSNE
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
 import plotly.express as px
+import plotly.graph_objects as go
 import umap
 import trimap
 import pacmap
@@ -312,6 +316,193 @@ method_info = {
 }
 
 st.info(method_info[method])
+
+# --- 6. Metrics and Analysis ---
+st.header("5. Dimensionality Reduction Metrics")
+
+# Calculate metrics for methods that support them
+if method in ["PCA", "KPCA"]:
+    
+    # For PCA, we can calculate detailed variance metrics
+    if method == "PCA":
+        st.subheader("Explained Variance Analysis")
+        
+        # Create a PCA with more components for analysis
+        n_components_analysis = min(len(feature_names), X_scaled.shape[0] - 1)
+        pca_full = PCA(n_components=n_components_analysis, random_state=42)
+        pca_full.fit(X_scaled)
+        
+        # Explained variance ratio
+        explained_var_ratio = pca_full.explained_variance_ratio_
+        cumulative_var_ratio = np.cumsum(explained_var_ratio)
+        
+        # Create subplot with explained variance
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Individual explained variance
+            fig_var = go.Figure()
+            fig_var.add_bar(
+                x=list(range(1, len(explained_var_ratio) + 1)),
+                y=explained_var_ratio,
+                name="Individual Variance",
+                text=[f"{val:.3f}" for val in explained_var_ratio],
+                textposition="outside"
+            )
+            fig_var.update_layout(
+                title="Explained Variance Ratio by Component",
+                xaxis_title="Principal Component",
+                yaxis_title="Explained Variance Ratio",
+                showlegend=False
+            )
+            st.plotly_chart(fig_var, use_container_width=True)
+        
+        with col2:
+            # Cumulative explained variance
+            fig_cum = go.Figure()
+            fig_cum.add_scatter(
+                x=list(range(1, len(cumulative_var_ratio) + 1)),
+                y=cumulative_var_ratio,
+                mode='lines+markers',
+                name="Cumulative Variance",
+                line=dict(color='red', width=3),
+                marker=dict(size=8)
+            )
+            
+            # Add horizontal lines for common thresholds
+            for threshold in [0.8, 0.9, 0.95]:
+                fig_cum.add_hline(
+                    y=threshold, 
+                    line_dash="dash", 
+                    line_color="gray",
+                    annotation_text=f"{threshold*100}%"
+                )
+            
+            fig_cum.update_layout(
+                title="Cumulative Explained Variance",
+                xaxis_title="Number of Components",
+                yaxis_title="Cumulative Variance Ratio",
+                showlegend=False
+            )
+            st.plotly_chart(fig_cum, use_container_width=True)
+        
+        # Metrics table
+        st.subheader("Variance Metrics")
+        metrics_data = []
+        
+        # Find minimum components for different variance thresholds
+        thresholds = [0.8, 0.9, 0.95, 0.99]
+        for threshold in thresholds:
+            min_components = np.argmax(cumulative_var_ratio >= threshold) + 1
+            if cumulative_var_ratio[min_components - 1] >= threshold:
+                metrics_data.append({
+                    "Variance Threshold": f"{threshold*100}%",
+                    "Min Components Required": min_components,
+                    "Actual Variance Achieved": f"{cumulative_var_ratio[min_components - 1]:.3f}"
+                })
+        
+        # Add current 2D projection metrics
+        metrics_data.append({
+            "Variance Threshold": "Current 2D",
+            "Min Components Required": 2,
+            "Actual Variance Achieved": f"{cumulative_var_ratio[1]:.3f}"
+        })
+        
+        metrics_df = pd.DataFrame(metrics_data)
+        st.dataframe(metrics_df, use_container_width=True)
+    
+    # Reconstruction Error for PCA and KPCA
+    st.subheader("Reconstruction Error")
+    
+    if method == "PCA":
+        # Calculate reconstruction error
+        X_reduced_2d = reducer.transform(X_scaled)
+        X_reconstructed = reducer.inverse_transform(X_reduced_2d)
+        reconstruction_error = mean_squared_error(X_scaled, X_reconstructed)
+        
+        st.metric("Mean Squared Error (MSE)", f"{reconstruction_error:.6f}")
+        st.write("Lower MSE indicates better preservation of original data structure.")
+        
+        # Feature-wise reconstruction error
+        feature_errors = np.mean((X_scaled - X_reconstructed) ** 2, axis=0)
+        
+        fig_feat_error = go.Figure()
+        fig_feat_error.add_bar(
+            x=feature_names,
+            y=feature_errors,
+            text=[f"{val:.4f}" for val in feature_errors],
+            textposition="outside"
+        )
+        fig_feat_error.update_layout(
+            title="Reconstruction Error by Feature",
+            xaxis_title="Features",
+            yaxis_title="Mean Squared Error",
+            xaxis_tickangle=-45
+        )
+        st.plotly_chart(fig_feat_error, use_container_width=True)
+    
+    elif method == "KPCA":
+        st.info("Reconstruction error calculation for Kernel PCA requires additional inverse mapping that may not be directly available.")
+
+# Feature Selection Impact Analysis
+if len(feature_names) > 3:  # Only if we have enough features
+    st.subheader("Feature Selection Impact")
+    
+    # RFE analysis
+    st.write("Analyzing the impact of feature selection on variance preservation...")
+    
+    # Create different feature subsets using RFE
+    feature_counts = [max(2, len(feature_names) // 4), max(3, len(feature_names) // 2), len(feature_names)]
+    feature_counts = sorted(list(set(feature_counts)))  # Remove duplicates and sort
+    
+    rfe_results = []
+    
+    for n_features in feature_counts:
+        if n_features <= len(feature_names):
+            # Use RFE with a simple estimator
+            estimator = LinearRegression()
+            rfe = RFE(estimator, n_features_to_select=n_features)
+            X_rfe = rfe.fit_transform(X_scaled, y)
+            
+            # Apply PCA to the selected features
+            pca_rfe = PCA(n_components=2, random_state=42)
+            pca_rfe.fit(X_rfe)
+            
+            variance_2d = np.sum(pca_rfe.explained_variance_ratio_)
+            selected_features = [feature_names[i] for i in range(len(feature_names)) if rfe.support_[i]]
+            
+            rfe_results.append({
+                "Number of Features": n_features,
+                "Selected Features": ", ".join(selected_features[:3] + ["..."] if len(selected_features) > 3 else selected_features),
+                "2D Variance Explained": f"{variance_2d:.3f}",
+                "Variance Value": variance_2d
+            })
+    
+    # Display results
+    rfe_df = pd.DataFrame(rfe_results)
+    st.dataframe(rfe_df[["Number of Features", "Selected Features", "2D Variance Explained"]], use_container_width=True)
+    
+    # Plot feature selection impact
+    fig_rfe = go.Figure()
+    fig_rfe.add_scatter(
+        x=[r["Number of Features"] for r in rfe_results],
+        y=[r["Variance Value"] for r in rfe_results],
+        mode='lines+markers',
+        name="Variance vs Features",
+        line=dict(color='green', width=3),
+        marker=dict(size=10)
+    )
+    fig_rfe.update_layout(
+        title="Impact of Feature Selection on 2D Variance",
+        xaxis_title="Number of Features Selected",
+        yaxis_title="2D Explained Variance Ratio",
+        showlegend=False
+    )
+    st.plotly_chart(fig_rfe, use_container_width=True)
+
+else:
+    st.subheader("Limited Metrics")
+    st.info(f"{method} is a non-linear method. Detailed variance analysis is not directly applicable, but the visualization above shows the method's ability to preserve local/global structure.")
 
 st.sidebar.markdown("---")
 st.sidebar.info("StreamlitDRV")
