@@ -175,3 +175,11 @@ cython_debug/
 
 # Conda environments
 .conda
+
+# Latex build files
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
