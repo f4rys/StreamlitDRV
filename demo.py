@@ -13,6 +13,10 @@ import plotly.graph_objects as go
 import umap
 import trimap
 import pacmap
+import seaborn as sns
+from sklearn.metrics import mean_absolute_error
+from itertools import product
+import matplotlib.pyplot as plt
 
 # Page Configuration
 st.set_page_config(
@@ -579,6 +583,347 @@ if len(feature_names) > 3:  # Only if we have enough features
 else:
     st.subheader("Limited Metrics")
     st.info(f"{method} is a non-linear method. Detailed variance analysis is not directly applicable, but the visualization above shows the method's ability to preserve local/global structure.")
+
+# --- 6. Reconstruction Error Heatmap for Different Parameters ---
+st.header("6. Reconstruction Error Heatmap for Different Parameters")
+st.markdown("Analyze how different parameter combinations affect reconstruction quality for methods that support it.")
+
+# Only show heatmap for methods that can calculate reconstruction error
+if method in ["PCA", "KPCA"]:
+    
+    # Parameter grid selection
+    st.subheader(f"Parameter Grid Analysis for {method}")
+    
+    if method == "PCA":
+        st.info("For PCA, we'll analyze reconstruction error across different numbers of components and data subsets.")
+        
+        # Create parameter grid for PCA
+        max_components = min(10, len(feature_names), X_scaled.shape[0] - 1)
+        component_range = range(2, max_components + 1)
+        
+        # Data subset ratios
+        subset_ratios = [0.5, 0.7, 0.8, 0.9, 1.0]
+        
+        # Calculate reconstruction errors for different parameter combinations
+        reconstruction_errors = []
+        parameter_combinations = []
+        
+        with st.spinner("Computing reconstruction errors for parameter grid..."):
+            for n_components in component_range:
+                for subset_ratio in subset_ratios:
+                    # Create subset of data
+                    n_samples = int(X_scaled.shape[0] * subset_ratio)
+                    if n_samples < n_components:
+                        continue
+                        
+                    np.random.seed(42)
+                    subset_indices = np.random.choice(X_scaled.shape[0], size=n_samples, replace=False)
+                    X_subset = X_scaled[subset_indices]
+                    
+                    # Apply PCA
+                    pca_temp = PCA(n_components=n_components, random_state=42)
+                    X_reduced_temp = pca_temp.fit_transform(X_subset)
+                    X_reconstructed_temp = pca_temp.inverse_transform(X_reduced_temp)
+                    
+                    # Calculate reconstruction error
+                    error = mean_squared_error(X_subset, X_reconstructed_temp)
+                    
+                    reconstruction_errors.append(error)
+                    parameter_combinations.append((n_components, subset_ratio))
+        
+        # Create heatmap data
+        heatmap_data = np.full((len(component_range), len(subset_ratios)), np.nan)
+        
+        for i, (n_comp, subset_ratio) in enumerate(parameter_combinations):
+            comp_idx = list(component_range).index(n_comp)
+            ratio_idx = subset_ratios.index(subset_ratio)
+            heatmap_data[comp_idx, ratio_idx] = reconstruction_errors[i]
+        
+        # Create heatmap using plotly
+        fig_heatmap = go.Figure(data=go.Heatmap(
+            z=heatmap_data,
+            x=[f"{ratio:.1f}" for ratio in subset_ratios],
+            y=[str(comp) for comp in component_range],
+            colorscale='Viridis_r',  # Reverse so lower errors are lighter
+            colorbar=dict(title="Reconstruction Error (MSE)"),
+            text=[[f"{val:.6f}" if not np.isnan(val) else "" for val in row] for row in heatmap_data],
+            texttemplate="%{text}",
+            textfont={"size": 10},
+            hoverongaps=False
+        ))
+        
+        fig_heatmap.update_layout(
+            title="PCA Reconstruction Error Heatmap",
+            xaxis_title="Data Subset Ratio",
+            yaxis_title="Number of Components",
+            height=400
+        )
+        
+        st.plotly_chart(fig_heatmap, use_container_width=True)
+        
+        # Find optimal parameters
+        min_error_idx = np.nanargmin(reconstruction_errors)
+        optimal_params = parameter_combinations[min_error_idx]
+        min_error = reconstruction_errors[min_error_idx]
+        
+        st.success(f"🎯 Optimal parameters: {optimal_params[0]} components with {optimal_params[1]:.1%} of data (Error: {min_error:.6f})")
+    
+    elif method == "KPCA":
+        st.info("For Kernel PCA, we'll analyze different kernel parameters and their impact on the embedding quality.")
+        
+        # Parameter grids for different kernels
+        kernel_options = ["rbf", "poly", "sigmoid"]
+        gamma_values = [0.1, 0.5, 1.0, 2.0, 5.0]
+        
+        # Use a smaller subset for KPCA as it's computationally expensive
+        max_samples_kpca = min(500, X_scaled.shape[0])
+        np.random.seed(42)
+        sample_indices = np.random.choice(X_scaled.shape[0], size=max_samples_kpca, replace=False)
+        X_sample = X_scaled[sample_indices]
+        
+        # For KPCA, we'll measure the quality using explained variance approximation
+        quality_scores = []
+        param_combinations = []
+        
+        with st.spinner("Computing quality scores for KPCA parameter grid..."):
+            for kernel in kernel_options:
+                for gamma in gamma_values:
+                    try:
+                        # Apply KPCA
+                        kpca_temp = KernelPCA(n_components=2, kernel=kernel, gamma=gamma, random_state=42)
+                        X_reduced_temp = kpca_temp.fit_transform(X_sample)
+                        
+                        # Calculate a quality metric (variance of the reduced dimensions)
+                        quality = np.sum(np.var(X_reduced_temp, axis=0))
+                        
+                        quality_scores.append(quality)
+                        param_combinations.append((kernel, gamma))
+                    except Exception as e:
+                        # Skip problematic parameter combinations
+                        continue
+        
+        if quality_scores:
+            # Create heatmap data
+            heatmap_data_kpca = np.full((len(kernel_options), len(gamma_values)), np.nan)
+            
+            for i, (kernel, gamma) in enumerate(param_combinations):
+                kernel_idx = kernel_options.index(kernel)
+                gamma_idx = gamma_values.index(gamma)
+                heatmap_data_kpca[kernel_idx, gamma_idx] = quality_scores[i]
+            
+            # Create heatmap
+            fig_heatmap_kpca = go.Figure(data=go.Heatmap(
+                z=heatmap_data_kpca,
+                x=[str(gamma) for gamma in gamma_values],
+                y=kernel_options,
+                colorscale='Viridis',
+                colorbar=dict(title="Quality Score (Variance)"),
+                text=[[f"{val:.3f}" if not np.isnan(val) else "" for val in row] for row in heatmap_data_kpca],
+                texttemplate="%{text}",
+                textfont={"size": 10},
+                hoverongaps=False
+            ))
+            
+            fig_heatmap_kpca.update_layout(
+                title="Kernel PCA Quality Score Heatmap",
+                xaxis_title="Gamma Parameter",
+                yaxis_title="Kernel Type",
+                height=400
+            )
+            
+            st.plotly_chart(fig_heatmap_kpca, use_container_width=True)
+            
+            # Find optimal parameters
+            max_quality_idx = np.nanargmax(quality_scores)
+            optimal_params_kpca = param_combinations[max_quality_idx]
+            max_quality = quality_scores[max_quality_idx]
+            
+            st.success(f"🎯 Best parameters: {optimal_params_kpca[0]} kernel with gamma={optimal_params_kpca[1]} (Quality: {max_quality:.3f})")
+        else:
+            st.error("Could not compute quality scores for any parameter combination.")
+
+elif method in ["t-SNE", "UMAP", "TRIMAP", "PaCMAP"]:
+    st.subheader(f"Parameter Grid Analysis for {method}")
+    
+    # For non-linear methods, we'll use different quality metrics
+    st.info(f"For {method}, we'll analyze how different parameters affect the embedding quality using trustworthiness and continuity metrics.")
+    
+    # Import required functions for quality metrics
+    from sklearn.metrics import pairwise_distances
+    
+    def calculate_trustworthiness(X_original, X_embedded, n_neighbors=5):
+        """Calculate trustworthiness of the embedding"""
+        from sklearn.neighbors import NearestNeighbors
+        
+        # Find nearest neighbors in original space
+        nbrs_orig = NearestNeighbors(n_neighbors=n_neighbors+1).fit(X_original)
+        _, indices_orig = nbrs_orig.kneighbors(X_original)
+        
+        # Find nearest neighbors in embedded space
+        nbrs_emb = NearestNeighbors(n_neighbors=n_neighbors+1).fit(X_embedded)
+        _, indices_emb = nbrs_emb.kneighbors(X_embedded)
+        
+        # Calculate trustworthiness
+        n = X_original.shape[0]
+        trustworthiness = 0
+        
+        for i in range(n):
+            # Get neighbors (excluding self)
+            neighbors_orig = set(indices_orig[i][1:])
+            neighbors_emb = set(indices_emb[i][1:])
+            
+            # Count how many embedded neighbors are also original neighbors
+            intersection = len(neighbors_orig.intersection(neighbors_emb))
+            trustworthiness += intersection / n_neighbors
+        
+        return trustworthiness / n
+    
+    # Use a smaller sample for computational efficiency
+    max_samples_nonlinear = min(300, X_scaled.shape[0])
+    np.random.seed(42)
+    sample_indices = np.random.choice(X_scaled.shape[0], size=max_samples_nonlinear, replace=False)
+    X_sample = X_scaled[sample_indices]
+    
+    if method == "t-SNE":
+        perplexity_values = [5, 15, 30, 50]
+        learning_rate_values = [50, 100, 200, 500]
+        
+        quality_scores = []
+        param_combinations = []
+        
+        with st.spinner("Computing t-SNE quality scores..."):
+            for perplexity in perplexity_values:
+                for learning_rate in learning_rate_values:
+                    if perplexity < X_sample.shape[0]:  # Ensure perplexity is valid
+                        try:
+                            tsne_temp = TSNE(n_components=2, perplexity=perplexity, 
+                                           learning_rate=learning_rate, random_state=42, 
+                                           verbose=0, max_iter=300)
+                            X_embedded = tsne_temp.fit_transform(X_sample)
+                            
+                            # Calculate trustworthiness
+                            trust = calculate_trustworthiness(X_sample, X_embedded)
+                            
+                            quality_scores.append(trust)
+                            param_combinations.append((perplexity, learning_rate))
+                        except Exception:
+                            continue
+        
+        if quality_scores:
+            # Create heatmap
+            heatmap_data = np.full((len(perplexity_values), len(learning_rate_values)), np.nan)
+            
+            for i, (perp, lr) in enumerate(param_combinations):
+                perp_idx = perplexity_values.index(perp)
+                lr_idx = learning_rate_values.index(lr)
+                heatmap_data[perp_idx, lr_idx] = quality_scores[i]
+            
+            fig_heatmap = go.Figure(data=go.Heatmap(
+                z=heatmap_data,
+                x=[str(lr) for lr in learning_rate_values],
+                y=[str(perp) for perp in perplexity_values],
+                colorscale='Viridis',
+                colorbar=dict(title="Trustworthiness Score"),
+                text=[[f"{val:.3f}" if not np.isnan(val) else "" for val in row] for row in heatmap_data],
+                texttemplate="%{text}",
+                textfont={"size": 10}
+            ))
+            
+            fig_heatmap.update_layout(
+                title="t-SNE Parameter Quality Heatmap",
+                xaxis_title="Learning Rate",
+                yaxis_title="Perplexity",
+                height=400
+            )
+            
+            st.plotly_chart(fig_heatmap, use_container_width=True)
+            
+            # Find optimal parameters
+            max_idx = np.nanargmax(quality_scores)
+            optimal_params = param_combinations[max_idx]
+            max_score = quality_scores[max_idx]
+            
+            st.success(f"🎯 Best parameters: Perplexity={optimal_params[0]}, Learning Rate={optimal_params[1]} (Trustworthiness: {max_score:.3f})")
+    
+    elif method == "UMAP":
+        n_neighbors_values = [5, 15, 30, 50]
+        min_dist_values = [0.01, 0.1, 0.3, 0.5]
+        
+        quality_scores = []
+        param_combinations = []
+        
+        with st.spinner("Computing UMAP quality scores..."):
+            for n_neighbors in n_neighbors_values:
+                for min_dist in min_dist_values:
+                    try:
+                        umap_temp = umap.UMAP(n_components=2, n_neighbors=n_neighbors, 
+                                            min_dist=min_dist, random_state=42)
+                        X_embedded = umap_temp.fit_transform(X_sample)
+                        
+                        # Calculate trustworthiness
+                        trust = calculate_trustworthiness(X_sample, X_embedded)
+                        
+                        quality_scores.append(trust)
+                        param_combinations.append((n_neighbors, min_dist))
+                    except Exception:
+                        continue
+        
+        if quality_scores:
+            # Create heatmap
+            heatmap_data = np.full((len(n_neighbors_values), len(min_dist_values)), np.nan)
+            
+            for i, (nn, md) in enumerate(param_combinations):
+                nn_idx = n_neighbors_values.index(nn)
+                md_idx = min_dist_values.index(md)
+                heatmap_data[nn_idx, md_idx] = quality_scores[i]
+            
+            fig_heatmap = go.Figure(data=go.Heatmap(
+                z=heatmap_data,
+                x=[str(md) for md in min_dist_values],
+                y=[str(nn) for nn in n_neighbors_values],
+                colorscale='Viridis',
+                colorbar=dict(title="Trustworthiness Score"),
+                text=[[f"{val:.3f}" if not np.isnan(val) else "" for val in row] for row in heatmap_data],
+                texttemplate="%{text}",
+                textfont={"size": 10}
+            ))
+            
+            fig_heatmap.update_layout(
+                title="UMAP Parameter Quality Heatmap",
+                xaxis_title="Minimum Distance",
+                yaxis_title="Number of Neighbors",
+                height=400
+            )
+            
+            st.plotly_chart(fig_heatmap, use_container_width=True)
+            
+            # Find optimal parameters
+            max_idx = np.nanargmax(quality_scores)
+            optimal_params = param_combinations[max_idx]
+            max_score = quality_scores[max_idx]
+            
+            st.success(f"🎯 Best parameters: n_neighbors={optimal_params[0]}, min_dist={optimal_params[1]} (Trustworthiness: {max_score:.3f})")
+    
+    else:
+        st.info(f"Parameter grid analysis for {method} is computationally intensive. Consider implementing with a smaller sample size.")
+
+else:
+    st.info("Reconstruction error heatmap is only available for PCA, Kernel PCA, t-SNE, and UMAP methods.")
+
+# Performance comparison section
+st.subheader("Parameter Selection Guidelines")
+
+guidelines = {
+    "PCA": "• Use more components for higher accuracy but lower compression\n• Consider data subset ratio for computational efficiency",
+    "KPCA": "• RBF kernel works well for most datasets\n• Higher gamma values capture more local patterns\n• Polynomial kernel good for structured data",
+    "t-SNE": "• Lower perplexity for local structure, higher for global\n• Higher learning rate for faster convergence\n• Perplexity should be less than number of samples",
+    "UMAP": "• More neighbors preserve global structure\n• Lower min_dist creates tighter clusters\n• Good balance between local and global preservation",
+    "TRIMAP": "• More inliers preserve local neighborhoods\n• More outliers help with global structure",
+    "PaCMAP": "• Balance MN_ratio and FP_ratio for local vs global preservation"
+}
+
+if method in guidelines:
+    st.info(guidelines[method])
 
 st.sidebar.markdown("---")
 st.sidebar.info("StreamlitDRV")
