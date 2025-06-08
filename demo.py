@@ -335,56 +335,132 @@ if method in ["PCA", "KPCA"]:
         # Explained variance ratio
         explained_var_ratio = pca_full.explained_variance_ratio_
         cumulative_var_ratio = np.cumsum(explained_var_ratio)
+          # Individual explained variance
+        fig_var = go.Figure()
+        fig_var.add_bar(
+            x=list(range(1, len(explained_var_ratio) + 1)),
+            y=explained_var_ratio,
+            name="Individual Variance",
+            text=[f"{val:.3f}" for val in explained_var_ratio],
+            textposition="outside"
+        )
+        fig_var.update_layout(
+            title="Explained Variance Ratio by Component",
+            xaxis_title="Principal Component",
+            yaxis_title="Explained Variance Ratio",
+            showlegend=False)
+        st.plotly_chart(fig_var, use_container_width=True)
         
-        # Create subplot with explained variance
-        col1, col2 = st.columns(2)
+        # Interactive cumulative variance plot with slider
+        st.subheader("Interactive Cumulative Variance Explorer")
         
-        with col1:
-            # Individual explained variance
-            fig_var = go.Figure()
-            fig_var.add_bar(
-                x=list(range(1, len(explained_var_ratio) + 1)),
-                y=explained_var_ratio,
-                name="Individual Variance",
-                text=[f"{val:.3f}" for val in explained_var_ratio],
-                textposition="outside"
-            )
-            fig_var.update_layout(
-                title="Explained Variance Ratio by Component",
-                xaxis_title="Principal Component",
-                yaxis_title="Explained Variance Ratio",
-                showlegend=False
-            )
-            st.plotly_chart(fig_var, use_container_width=True)
+        # Slider for number of components
+        max_components = len(cumulative_var_ratio)
+        selected_components = st.slider(
+            "Select number of components to analyze:",
+            min_value=1,
+            max_value=max_components,
+            value=min(5, max_components),
+            step=1,
+            help="Move the slider to see cumulative variance for different numbers of components"
+        )
         
-        with col2:
-            # Cumulative explained variance
-            fig_cum = go.Figure()
-            fig_cum.add_scatter(
-                x=list(range(1, len(cumulative_var_ratio) + 1)),
-                y=cumulative_var_ratio,
-                mode='lines+markers',
-                name="Cumulative Variance",
-                line=dict(color='red', width=3),
-                marker=dict(size=8)
+        # Create interactive plot
+        fig_interactive = go.Figure()
+        
+        # Add full cumulative variance line (light gray)
+        fig_interactive.add_scatter(
+            x=list(range(1, len(cumulative_var_ratio) + 1)),
+            y=cumulative_var_ratio,
+            mode='lines',
+            name="Full Range",
+            line=dict(color='lightgray', width=2),
+            opacity=0.5
+        )
+        
+        # Add selected range (highlighted)
+        fig_interactive.add_scatter(
+            x=list(range(1, selected_components + 1)),
+            y=cumulative_var_ratio[:selected_components],
+            mode='lines+markers',
+            name=f"Selected ({selected_components} components)",
+            line=dict(color='red', width=4),
+            marker=dict(size=10, color='red'),
+            fill='tonexty',
+            fillcolor='rgba(255,0,0,0.1)'
+        )
+        
+        # Add vertical line at selected point
+        fig_interactive.add_vline(
+            x=selected_components,
+            line_dash="dash",
+            line_color="red",
+            line_width=3,
+            annotation_text=f"Components: {selected_components}"
+        )
+        
+        # Add horizontal line at selected variance
+        selected_variance = cumulative_var_ratio[selected_components - 1]
+        fig_interactive.add_hline(
+            y=selected_variance,
+            line_dash="dash",
+            line_color="blue",
+            line_width=3,
+            annotation_text=f"Variance: {selected_variance:.3f}"
+        )
+        
+        # Add threshold lines
+        for threshold in [0.8, 0.9, 0.95]:
+            fig_interactive.add_hline(
+                y=threshold,
+                line_dash="dot",
+                line_color="gray",
+                opacity=0.7,
+                annotation_text=f"{threshold*100}%"
             )
-            
-            # Add horizontal lines for common thresholds
-            for threshold in [0.8, 0.9, 0.95]:
-                fig_cum.add_hline(
-                    y=threshold, 
-                    line_dash="dash", 
-                    line_color="gray",
-                    annotation_text=f"{threshold*100}%"
+        
+        fig_interactive.update_layout(
+            title=f"Interactive Cumulative Variance - {selected_components} Components Explain {selected_variance:.1%} of Variance",
+            xaxis_title="Number of Components",
+            yaxis_title="Cumulative Variance Ratio",
+            height=500,
+            showlegend=True,
+            legend=dict(x=0.7, y=0.3)
+        )
+        
+        st.plotly_chart(fig_interactive, use_container_width=True)
+        
+        # Display metrics for selected components
+        col_metrics1, col_metrics2, col_metrics3 = st.columns(3)
+        
+        with col_metrics1:
+            st.metric(
+                "Selected Components",
+                selected_components,
+                f"{selected_components/max_components:.1%} of total"
+            )
+        
+        with col_metrics2:
+            st.metric(
+                "Cumulative Variance",
+                f"{selected_variance:.3f}",
+                f"{selected_variance:.1%}"
+            )
+        
+        with col_metrics3:
+            if selected_components < max_components:
+                remaining_variance = cumulative_var_ratio[-1] - selected_variance
+                st.metric(
+                    "Remaining Variance",
+                    f"{remaining_variance:.3f}",
+                    f"-{remaining_variance:.1%}"
                 )
-            
-            fig_cum.update_layout(
-                title="Cumulative Explained Variance",
-                xaxis_title="Number of Components",
-                yaxis_title="Cumulative Variance Ratio",
-                showlegend=False
-            )
-            st.plotly_chart(fig_cum, use_container_width=True)
+            else:
+                st.metric(
+                    "Coverage",
+                    "Complete",
+                    "All variance captured"
+                )
         
         # Metrics table
         st.subheader("Variance Metrics")
