@@ -5,6 +5,7 @@ A comprehensive Streamlit application for interactive dimensionality reduction a
 ## Features
 
 - **Multiple Dimensionality Reduction Methods**:
+
   - PCA (Principal Component Analysis)
   - Kernel PCA (with multiple kernels)
   - t-SNE (t-Distributed Stochastic Neighbor Embedding)
@@ -13,11 +14,13 @@ A comprehensive Streamlit application for interactive dimensionality reduction a
   - PaCMAP (Pairwise Controlled Manifold Approximation)
 
 - **Data Input Options**:
+
   - Built-in diabetes dataset for quick testing
   - CSV/Excel file upload support
   - Automatic data validation and preprocessing
 
 - **Interactive Analysis**:
+
   - Real-time parameter adjustment
   - Comprehensive metrics and quality analysis
   - Parameter optimization with heatmaps
@@ -29,6 +32,14 @@ A comprehensive Streamlit application for interactive dimensionality reduction a
   - Reconstruction error visualizations
   - Parameter optimization heatmaps
 
+## Run using Docker
+
+```bash
+docker build -t streamlit-app .
+
+docker run -d -p 8501:8501 streamlit-app
+```
+
 ## Prerequisites
 
 - Python 3.12 or higher
@@ -39,14 +50,16 @@ A comprehensive Streamlit application for interactive dimensionality reduction a
 ### Option 1: Using uv (Recommended)
 
 1. **Clone or download the project**:
+
    ```cmd
    git clone <repository-url>
    cd StreamlitDRV
    ```
-   
+
    Or extract the project files to a directory.
 
 2. **Install dependencies using uv**:
+
    ```cmd
    uv sync
    ```
@@ -59,12 +72,14 @@ A comprehensive Streamlit application for interactive dimensionality reduction a
 ### Option 2: Using pip
 
 1. **Clone or download the project**:
+
    ```cmd
    git clone <repository-url>
    cd StreamlitDRV
    ```
 
 2. **Create a virtual environment** (recommended):
+
    ```cmd
    python -m venv venv
    venv\Scripts\activate
@@ -78,11 +93,13 @@ A comprehensive Streamlit application for interactive dimensionality reduction a
 ## Running the Application
 
 ### Using uv:
+
 ```cmd
 uv run streamlit run app.py
 ```
 
 ### Using pip:
+
 ```cmd
 streamlit run app.py
 ```
@@ -92,24 +109,29 @@ The application will open in your default web browser at `http://localhost:8501`
 ## Usage Guide
 
 ### 1. **Data Selection**
+
 - Choose between the built-in diabetes dataset or upload your own CSV/Excel file
 - For custom datasets, select target and feature columns
 
 ### 2. **Data Preprocessing**
+
 - Handle missing values automatically
 - Data is automatically scaled using StandardScaler
 - Option to limit sample size for large datasets
 
 ### 3. **Method Selection**
+
 - Choose from 6 different dimensionality reduction methods
 - Adjust method-specific parameters using the sidebar controls
 
 ### 4. **Analysis and Visualization**
+
 - View 2D scatter plot of reduced data
 - Explore detailed metrics and analysis
 - Optimize parameters using heatmap visualizations
 
 ### 5. **Parameter Optimization**
+
 - Automatic parameter grid search
 - Quality metrics for different parameter combinations
 - Visual heatmaps showing optimal parameter ranges
@@ -150,6 +172,7 @@ StreamlitDRV/
 - **Built-in datasets** (diabetes dataset included)
 
 ### Data Requirements:
+
 - At least 2 numeric columns for dimensionality reduction
 - Minimum 10 samples after preprocessing
 - Target column for visualization coloring
@@ -157,29 +180,35 @@ StreamlitDRV/
 ## Method-Specific Guidelines
 
 ### PCA
+
 - Use more components for higher accuracy but lower compression
 - Consider data subset ratio for computational efficiency
 
 ### Kernel PCA
+
 - RBF kernel works well for most datasets
 - Higher gamma values capture more local patterns
 - Polynomial kernel good for structured data
 
 ### t-SNE
+
 - Lower perplexity for local structure, higher for global
 - Higher learning rate for faster convergence
 - Perplexity should be less than number of samples
 
 ### UMAP
+
 - More neighbors preserve global structure
 - Lower min_dist creates tighter clusters
 - Good balance between local and global preservation
 
 ### TRIMAP
+
 - More inliers preserve local neighborhoods
 - More outliers help with global structure
 
 ### PaCMAP
+
 - Balance MN_ratio and FP_ratio for local vs global preservation
 
 ## Troubleshooting
@@ -187,6 +216,7 @@ StreamlitDRV/
 ### Common Issues:
 
 1. **Import errors**: Ensure all dependencies are installed correctly
+
    ```cmd
    uv sync  # or pip install -r requirements.txt
    ```
